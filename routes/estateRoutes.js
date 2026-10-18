@@ -22,29 +22,41 @@ router.post('/add-estate', async (req, res) => {
     // حساب صافي التركة بدقة
     const netEstate = gross - (funeral + secured + unsecured + divine + wills)
 //حفظ الورثة الواردة بياناتهم اولا واستحراج ال IDs الخاصة بهم
-    let heirIds=[]
-    if (inheritors && Array.isArray(inheritors) && inheritors.length > 0) {
-      const SavedHeirsPromises = inheritors.map(async (heirData) => {
-        const newHeir = new Heir(heirData);
-        const savedHeir = await newHeir.save();
-        return savedHeir._id;
-      });
+ // 1. إنشاء وحفظ التركة أولاً
+const newEstate = new Estate({
+  deceasedGender,
+  liquidationDetails,
+  netEstate,
+  inheritors: []
+});
+const savedEstate = await newEstate.save();
 
-      heirIds = await Promise.all(SavedHeirsPromises);
-      console.log("معرّفات الورثة بعد الحفظ (heirIds):", heirIds);
-    }
-    
-    // إنشاء كائن التركة الجديد
-    const newEstate = new Estate({
-      deceasedGender,
-      liquidationDetails: {
-        ...liquidationDetails,
-        netEstate
-      },
-      inheritors:heirIds
-    })
+// 2. حفظ الورثة وربطهم بـ estate الجديد تلقائياً
+let heirIds = [];
+if (inheritors && Array.isArray(inheritors) && inheritors.length > 0) {
+  const SavedHeirsPromises = inheritors.map(async (heirData) => {
+    const newHeir = new Heir({
+      ...heirData,
+      estate: savedEstate._id,
+      category: heirData.category || "primary" // قيمة افتراضية لتجنب الخطأ
+    });
+    const savedHeir = await newHeir.save();
+    return savedHeir._id;
+  });
+  heirIds = await Promise.all(SavedHeirsPromises);
 
-    const savedEstate = await newEstate.save()
+  // 3. تحديث التركة بمعرفات الورثة
+  savedEstate.inheritors = heirIds;
+  await savedEstate.save();
+}
+
+// 4. جلب تفاصيل التركة كاملة للإرجاع
+const populatedEstate = await Estate.findById(savedEstate._id).populate({
+  path: 'inheritors',
+  strictPopulate: false
+});
+
+   // const savedEstate = await newEstate.save()
     //تم حفظ تفاصيل التركة مع تفاصيل  الورثة كاملة (populate)في الرد
     const populatedEstat=await Estate.findById(savedEstate._id).populate({path:'inheritors',
       strictPopulate:false}
@@ -77,28 +89,30 @@ router.get('/:id', async (req, res) => {
 })
 // مسار تشغيل محرك الحسابات
 router.post('/calculate/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
+  try {
+    const { id } = req.params;
+    console.log("الـ ID المطلوب بحثه:", id);
 
-        // 1. البحث عن التركة أولاً
+    // طباعة كل السجلات المخزنة في قاعدة البيانات لنرى ما بداخله
+    const allEstates = await Estate.find({});
+    console.log("جميع التركات الموجودة في القاعدة حالياً:", allEstates);
+
     const estate = await Estate.findById(id);
     if (!estate) {
       return res.status(404).json({ message: "التركة غير موجودة" });
     }
 
-    // 2. جلب كل الورثة المرتبطين بهذه التركة مباشرة من قاعدة البيانات
     const inheritors = await Heir.find({ estate: id });
-
-    // 3. تشغيل المحرك
     const result = calculateInheritance(estate, inheritors);
-        res.status(200).json({
-            message: "تم حساب التركة بنجاح",
-            data: result
-        });
-    } catch (error) {
-        console.error("خطأ في حساب التركة:", error);
-        res.status(500).json({ message: "حدث خطأ أثناء الحساب", error: error.message });
-    }
-})
+    res.status(200).json({
+      message: "تم حساب التركة بنجاح",
+      data: result
+    });
+
+  } catch (error) {
+    console.error("خطأ أثناء الحساب:", error);
+    res.status(500).json({ message: "حدث خطأ أثناء الحساب", error: error.message });
+  }
+});
 
 module.exports = router
