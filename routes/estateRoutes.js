@@ -87,6 +87,16 @@ router.get('/:id', async (req, res) => {
         res.status(500).json({ message: "حدث خطأ في السيرفر", error: error.message })
     }
 })
+// مسار إضافة تركة جديدة
+router.post('/', async (req, res) => {
+  try {
+    const estate = new Estate(req.body);
+    const savedEstate = await estate.save();
+    res.status(201).json(savedEstate);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
 // مسار تشغيل محرك الحسابات
 router.post('/calculate/:id', async (req, res) => {
   try {
@@ -102,12 +112,54 @@ router.post('/calculate/:id', async (req, res) => {
       return res.status(404).json({ message: "التركة غير موجودة" });
     }
 
-    const inheritors = await Heir.find({ estate: id });
-    const result = calculateInheritance(estate, inheritors);
-    res.status(200).json({
-      message: "تم حساب التركة بنجاح",
-      data: result
+   const inheritors = await Heir.find({ estate: id });
+
+// فحص وتطبيق المسألة الأكدرية مباشرة
+const hasHusband = inheritors.some(i => i.relation === 'husband' && !i.isBlocked);
+const hasMother = inheritors.some(i => (i.relation === 'mother' || i.relation === 'grandmother') && !i.isBlocked);
+const hasGrandfather = inheritors.some(i => i.relation === 'grandfather' && !i.isBlocked);
+const hasSister = inheritors.some(i => (i.relation === 'sister' || i.relation === 'paternal_sister') && !i.isBlocked);
+const activeCount = inheritors.filter(i => !i.isBlocked).length;
+
+let result;
+
+if (hasHusband && hasMother && hasGrandfather && hasSister && activeCount === 4) {
+    const totalEstate = estate.netEstate || 0;
+    const updatedInheritors = inheritors.map(h => {
+        let ratio = "0";
+        let amount = 0;
+        if (h.relation === 'husband') {
+            ratio = "3/9";
+            amount = (totalEstate * 3) / 9;
+        } else if (h.relation === 'mother' || h.relation === 'grandmother') {
+            ratio = "2/9";
+            amount = (totalEstate * 2) / 9;
+        } else if (h.relation === 'grandfather') {
+            ratio = "4/9";
+            amount = (totalEstate * 4) / 9;
+        } else if (h.relation === 'sister' || h.relation === 'paternal_sister') {
+            ratio = "2/9";
+            amount = (totalEstate * 2) / 9;
+        }
+        return {
+            ...h._doc,
+            shareRatio: ratio,
+            shareAmount: amount
+        };
     });
+
+    result = {
+        netEstate: totalEstate,
+        inheritors: updatedInheritors
+    };
+} else {
+    result = calculateInheritance(estate, inheritors);
+}
+
+res.status(200).json({
+    message: "تم حساب التركة بنجاح",
+    data: result
+});
 
   } catch (error) {
     console.error("خطأ أثناء الحساب:", error);

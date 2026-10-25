@@ -29,7 +29,134 @@ const calculateInheritance = (estate, inheritors) => {
         }
         return inheritor;
     });
+// --- فحص وحساب المسألتين العمريتين (الغراوين) ---
+    const isOmariyyatan = !hasChildren && father && mother && (husband || (wives && wives.length === 1));
+    if (isOmariyyatan) {
+        updatedInheritors = updatedInheritors.map(inheritor => {
+            
+            // --- فحص وحساب المسألة المشتركة ---
+const husbandObj = updatedInheritors.find(i => i.relation === 'husband' && !i.isBlocked);
+const motherObj = updatedInheritors.find(i => (i.relation === 'mother' || i.relation === 'grandmother') && !i.isBlocked);
+const maternalSiblings = updatedInheritors.filter(i => (i.relation === 'maternal_brother' || i.relation === 'maternal_sister') && !i.isBlocked);
+const fullBrothers = updatedInheritors.filter(i => (i.relation === 'brother' || i.relation === 'sister') && !i.isBlocked);
+const hasFullBrother = fullBrothers.some(i => i.relation === 'brother');
+// --- فحص وحساب المسألة الأكدرية ---
+    const grandfatherObj = updatedInheritors.find(i => i.relation === 'grandfather' && !i.isBlocked);
+    const sisterObj = updatedInheritors.find(i => (i.relation === 'sister' || i.relation === 'paternal_sister') && !i.isBlocked);
+    const father = updatedInheritors.find(i => i.relation === 'father' && !i.isBlocked);
+    const hasSons = updatedInheritors.some(i => i.relation === 'son' && !i.isBlocked);
+    const brothersAndSisters = updatedInheritors.filter(i => 
+        ['brother', 'sister', 'paternal_brother', 'paternal_sister'].includes(i.relation) && !i.isBlocked
+    );
 
+    const isAkdariyyah = husbandObj && motherObj && grandfatherObj && sisterObj && !father && !hasSons && brothersAndSisters.length === 1;
+        console.log("IS AKDARIYYAH?:", isAkdariyyah);
+    if (isAkdariyyah) {
+        updatedInheritors = updatedInheritors.map(inheritor => {
+            if (inheritor.isBlocked) return inheritor;
+
+            if (inheritor.relation === 'husband') {
+                inheritor.shareRatio = "3/9 (عول - الأكدرية)";
+                inheritor.shareAmount = Number((totalEstate * (3 / 9)).toFixed(2));
+            } else if (inheritor.relation === 'mother' || inheritor.relation === 'grandmother') {
+                inheritor.shareRatio = "2/9 (عول - الأكدرية)";
+                inheritor.shareAmount = Number((totalEstate * (2 / 9)).toFixed(2));
+            } else if (inheritor.relation === 'grandfather') {
+                inheritor.shareRatio = "4/9 (الأكدرية)";
+                inheritor.shareAmount = Number((totalEstate * (4 / 9)).toFixed(2));
+            } else if (inheritor.relation === 'sister' || inheritor.relation === 'paternal_sister') {
+                inheritor.shareRatio = "2/9 (الأكدرية)";
+                inheritor.shareAmount = Number((totalEstate * (2 / 9)).toFixed(2));
+            }
+            return inheritor;
+        });
+
+        return {
+            netEstate: totalEstate,
+            inheritors: updatedInheritors
+        };
+    // --- حالة الأخ المبارك (جد + أخت شقيقة + أخت لأب + أخ لأب) ---
+    const hasFullSister = inheritors.some(i => i.relation === 'sister' && !i.isBlocked);
+    const hasPaternalSister = inheritors.some(i => i.relation === 'paternal_sister' && !i.isBlocked);
+    const hasPaternalBrother = inheritors.some(i => i.relation === 'paternal_brother' && !i.isBlocked);
+
+    if (hasGrandfather && hasFullSister && hasPaternalSister && hasPaternalBrother && activeCount === 4) {
+        updatedInheritors = updatedInheritors.map(inheritor => {
+            if (inheritor.isBlocked) return inheritor;
+            if (inheritor.relation === 'grandfather') {
+                inheritor.shareRatio = "1/2 (مباركة)";
+                inheritor.shareAmount = Number((totalEstate * 0.5).toFixed(2));
+            } else if (inheritor.relation === 'sister') {
+                inheritor.shareRatio = "1/2 (مباركة)";
+                inheritor.shareAmount = Number((totalEstate * 0.5).toFixed(2));
+            } else {
+                inheritor.shareRatio = "0";
+                inheritor.shareAmount = 0;
+            }
+            return inheritor;
+        });
+        return {
+            netEstate: totalEstate,
+            inheritors: updatedInheritors
+        };
+    }
+
+    // --- حالة الأخ المشؤوم (جد + أم + أخت شقيقة + أخ لأب) ---
+    const hasMotherCheck = inheritors.some(i => (i.relation === 'mother' || i.relation === 'grandmother') && !i.isBlocked);
+    
+    if (hasGrandfather && hasMotherCheck && hasFullSister && hasPaternalBrother && activeCount === 4) {
+        updatedInheritors = updatedInheritors.map(inheritor => {
+            if (inheritor.isBlocked) return inheritor;
+            if (inheritor.relation === 'mother' || inheritor.relation === 'grandmother') {
+                inheritor.shareRatio = "1/3 (مشؤومة)";
+                inheritor.shareAmount = Number((totalEstate / 3).toFixed(2));
+            } else if (inheritor.relation === 'grandfather') {
+                inheritor.shareRatio = "1/3 (مشؤومة)";
+                inheritor.shareAmount = Number((totalEstate / 3).toFixed(2));
+            } else if (inheritor.relation === 'sister') {
+                inheritor.shareRatio = "1/3 (مشؤومة)";
+                inheritor.shareAmount = Number((totalEstate / 3).toFixed(2));
+            } else {
+                inheritor.shareRatio = "0";
+                inheritor.shareAmount = 0;
+            }
+            return inheritor;
+        });
+        return {
+            netEstate: totalEstate,
+            inheritors: updatedInheritors
+        };
+    }
+            } else if (inheritor.relation === 'wife') {
+                inheritor.shareRatio = "1/4";
+                inheritor.shareAmount = totalEstate * (1 / 4);
+            } else if (inheritor.relation === 'mother') {
+                // الأم تأخذ ثلث الباقي (الذي يعادل 1/6 في وجود الزوج أو 1/4 في وجود الزوجة)
+                const spouseShareFraction = husband ? (1 / 2) : (1 / 4);
+                const remainingAfterSpouse = 1 - spouseShareFraction;
+                const motherRatio = remainingAfterSpouse / 3;
+                
+                inheritor.shareRatio = "ثلث الباقي";
+                inheritor.shareAmount = totalEstate * motherRatio;
+            } else if (inheritor.relation === 'father') {
+                // الأب يأخذ الباقي تعصيباً
+                const spouseShareFraction = husband ? (1 / 2) : (1 / 4);
+                const remainingAfterSpouse = 1 - spouseShareFraction;
+                const motherRatio = remainingAfterSpouse / 3;
+                const fatherRatio = remainingAfterSpouse - motherRatio;
+                
+                inheritor.shareRatio = "عصبة (الباقي)";
+                inheritor.shareAmount = totalEstate * fatherRatio;
+            }
+            return inheritor;
+        });
+
+        // إرجاع النتيجة نهائياً لأن العمريتين تستغرقان التركة بالكامل بلا عول ولا رد
+        return {
+            netEstate: totalEstate,
+            inheritors: updatedInheritors
+        };
+    }
     let totalAllocatedRatio = 0; // مجموع الفروض الموزعة
 
     // --- المرحلة الثانية: حساب أصحاب الفروض (Fixed Shares) ---
@@ -109,6 +236,7 @@ const calculateInheritance = (estate, inheritors) => {
     const hasResiduaries = sons.length > 0 || (father && !hasChildren);
 
     if (remainingEstate > 0 && !hasResiduaries) {
+        
       // رد الباقي على أصحاب الفروض عدا الزوج والزوجة (وفقاً لجمهور الفقهاء)
       const raddEligible = updatedInheritors.filter(i => 
         i.relation !== 'wife' && i.relation !== 'husband' && i.shareAmount > 0
@@ -126,12 +254,8 @@ const calculateInheritance = (estate, inheritors) => {
         });
         remainingEstate = 0;
       }
-    }
-  } 
-
-    // --- المرحلة الثالثة: توزيع الباقي تعصيباً (Residuaries / العصَبة) ---
-     remainingEstate = totalEstate - updatedInheritors.reduce((acc, curr) => acc + (curr.shareAmount || 0), 0);
-    if (remainingEstate > 0) {
+   }
+  
         // حالة وجود أبناء وبنات (للذكر مثل حظ الأنثيين)
         if (hasSons) {
             const totalShares = (sons.length * 2) + daughters.length; // الابن بسهمين والبنت بسهم
@@ -159,6 +283,7 @@ const calculateInheritance = (estate, inheritors) => {
             });
         }
     }
+
 
     return {
         netEstate: totalEstate,
