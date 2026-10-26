@@ -28,26 +28,26 @@ const newEstate = new Estate({
   liquidationDetails,
   netEstate,
   inheritors: []
-});
-const savedEstate = await newEstate.save();
+})
+const savedEstate = await newEstate.save()
 
 // 2. حفظ الورثة وربطهم بـ estate الجديد تلقائياً
-let heirIds = [];
+let heirIds = []
 if (inheritors && Array.isArray(inheritors) && inheritors.length > 0) {
   const SavedHeirsPromises = inheritors.map(async (heirData) => {
     const newHeir = new Heir({
       ...heirData,
       estate: savedEstate._id,
       category: heirData.category || "primary" // قيمة افتراضية لتجنب الخطأ
-    });
-    const savedHeir = await newHeir.save();
-    return savedHeir._id;
-  });
-  heirIds = await Promise.all(SavedHeirsPromises);
+    })
+    const savedHeir = await newHeir.save()
+    return savedHeir._id
+  })
+  heirIds = await Promise.all(SavedHeirsPromises)
 
   // 3. تحديث التركة بمعرفات الورثة
-  savedEstate.inheritors = heirIds;
-  await savedEstate.save();
+  savedEstate.inheritors = heirIds
+  await savedEstate.save()
 }
 
 // 4. جلب تفاصيل التركة كاملة للإرجاع
@@ -90,38 +90,38 @@ router.get('/:id', async (req, res) => {
 // مسار إضافة تركة جديدة
 router.post('/', async (req, res) => {
   try {
-    const estate = new Estate(req.body);
-    const savedEstate = await estate.save();
-    res.status(201).json(savedEstate);
+    const estate = new Estate(req.body)
+    const savedEstate = await estate.save()
+    res.status(201).json(savedEstate)
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ message: error.message })
   }
-});
+})
 // مسار تشغيل محرك الحسابات
 router.post('/calculate/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    console.log("الـ ID المطلوب بحثه:", id);
+    const { id } = req.params
+    console.log("الـ ID المطلوب بحثه:", id)
 
     // طباعة كل السجلات المخزنة في قاعدة البيانات لنرى ما بداخله
-    const allEstates = await Estate.find({});
-    console.log("جميع التركات الموجودة في القاعدة حالياً:", allEstates);
+    const allEstates = await Estate.find({})
+    console.log("جميع التركات الموجودة في القاعدة حالياً:", allEstates)
 
-    const estate = await Estate.findById(id);
+    const estate = await Estate.findById(id)
     if (!estate) {
-      return res.status(404).json({ message: "التركة غير موجودة" });
+      return res.status(404).json({ message: "التركة غير موجودة" })
     }
 
-   const inheritors = await Heir.find({ estate: id });
+   const inheritors = await Heir.find({ estate: id })
 
 // فحص وتطبيق المسألة الأكدرية مباشرة
-const hasHusband = inheritors.some(i => i.relation === 'husband' && !i.isBlocked);
-const hasMother = inheritors.some(i => (i.relation === 'mother' || i.relation === 'grandmother') && !i.isBlocked);
-const hasGrandfather = inheritors.some(i => i.relation === 'grandfather' && !i.isBlocked);
-const hasSister = inheritors.some(i => (i.relation === 'sister' || i.relation === 'paternal_sister') && !i.isBlocked);
-const activeCount = inheritors.filter(i => !i.isBlocked).length;
+const hasHusband = inheritors.some(i => i.relation === 'husband' && !i.isBlocked)
+const hasMother = inheritors.some(i => (i.relation === 'mother' || i.relation === 'grandmother') && !i.isBlocked)
+const hasGrandfather = inheritors.some(i => i.relation === 'grandfather' && !i.isBlocked)
+const hasSister = inheritors.some(i => (i.relation === 'sister' || i.relation === 'paternal_sister') && !i.isBlocked)
+const activeCount = inheritors.filter(i => !i.isBlocked).length
 
-let result;
+let result
 
 if (hasHusband && hasMother && hasGrandfather && hasSister && activeCount === 4) {
     const totalEstate = estate.netEstate || 0;
@@ -145,26 +145,26 @@ if (hasHusband && hasMother && hasGrandfather && hasSister && activeCount === 4)
             ...h._doc,
             shareRatio: ratio,
             shareAmount: amount
-        };
-    });
+        }
+    })
 
     result = {
         netEstate: totalEstate,
         inheritors: updatedInheritors
-    };
+    }
 } else {
-    result = calculateInheritance(estate, inheritors);
+    result = calculateInheritance(estate, inheritors)
 }
 
 res.status(200).json({
     message: "تم حساب التركة بنجاح",
     data: result
-});
+})
 
   } catch (error) {
     console.error("خطأ أثناء الحساب:", error);
-    res.status(500).json({ message: "حدث خطأ أثناء الحساب", error: error.message });
+    res.status(500).json({ message: "حدث خطأ أثناء الحساب", error: error.message })
   }
-});
+})
 
 module.exports = router

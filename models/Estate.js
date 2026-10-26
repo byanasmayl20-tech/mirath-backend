@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-
+ 
 // تعريف مخطط التركة (Estate Schema) الخاص بحاسبة المواريث
 const estateSchema = new mongoose.Schema({
   
@@ -7,7 +7,7 @@ const estateSchema = new mongoose.Schema({
   deceasedGender: {
     type: String,
     enum: ['male', 'female'], // يقتصر الخيار على ذكر أو أنثى فقط
-    required: true            // حقل إجباري لا يمكن حفظ التركة بدونه
+    required: false         // حقل إجباري لا يمكن حفظ التركة بدونه
   },
 
   // تفاصيل تصفية التركة قبل توزيع الميراث (الحقوق المتعلقة بالتركة)
@@ -15,7 +15,7 @@ const estateSchema = new mongoose.Schema({
     // إجمالي التركة (رأس المال أو مجموع أموال المتوفى)
     grossEstate: { 
       type: Number, 
-      required: true 
+      required: false
     },
 
     // مؤن التجهيز والتدفين بالمعروف
@@ -51,7 +51,7 @@ const estateSchema = new mongoose.Schema({
     // صافي التركة القابل للتوزيع على الورثة (بعد سداد كافة الحقوق والديون والوصايا)
     netEstate: { 
       type: Number, 
-      required: true 
+      required: false
     }
   },
 
