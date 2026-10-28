@@ -3,6 +3,63 @@ const calculateInheritance = (estate, inheritors) => {
 
      var totalEstate =Number(estate.netEstate)|| 100000; // صافي التركة
      var remainingEstate = totalEstate
+     // --- 1. حساب المصاريف والديون أولاً ---
+    const totalDebtsAndExpenses = funeralExpenses + securedDebts + unsecuredDebts + divineDebts;
+    
+    // --- 2. التحقق من الوصية وقاعدتها الفقهية (لوارث أو غير وارث) ---
+    let finalWillAmount = 0;
+    
+    if (estate.liquidationDetails && estate.liquidationDetails.willAmount > 0) {
+        const netBeforeWill = estate.liquidationDetails.grossEstate - totalDebtsAndExpenses;
+        const maxThird = netBeforeWill / 3; // أقصى حد للوصية هو الثلث
+
+        // فحص ما إذا كان الموصى له وارثاً أم لا
+        if (estate.liquidationDetails.isWillToHeir) {
+            // قاعدة: لا وصية لوارث إلا بموافقة وباقي الورثة
+            if (estate.liquidationDetails.isApprovedByOtherHeirs) {
+                finalWillAmount = Math.min(estate.liquidationDetails.willAmount, netBeforeWill);
+            } else {
+                // إذا لم توافق بقية الورثة، تُحجب الوصية لوارث تماماً
+                finalWillAmount = 0; 
+            }
+        } else {
+            // وصية لغير وارث: تنفذ في حدود الثلث كحد أقصى
+            finalWillAmount = Math.min(estate.liquidationDetails.willAmount, maxThird);
+        }
+    }
+   // حساب القاسم المشترك الأكبر (يستخدم للتوافق والتداخل)
+    function getGCD(a, b) {
+      return b === 0 ? a : getGCD(b, a % b);
+    }
+
+// حساب المضاعف المشترك الأصغر (يمثل النسب الأربع لربط المقامات وأصول المسائل)
+    function getLCM(a, b) {
+     if (a === 0 || b === 0) return 0;
+      return (a * b) / getGCD(a, b);
+    }
+    // دالة تصحيح الأسهم بناءً على عدد الرؤوس والنسب الأربع
+function correctBaseShare(inheritors, baseOrigin) {
+  let correctionFactor = 1;
+
+  inheritors.forEach(inheritor => {
+    const heads = inheritor.count || 1; // عدد الرؤوس
+    const shares = inheritor.shares;   // عدد الأسهم
+
+    if (shares % heads !== 0) { // في حال وجود انكسار (عدم تماثل)
+      const gcd = getGCD(shares, heads);
+      const headsPart = heads / gcd; // التوافق أو التباين (جزء السهم)
+      
+      // تطبيق التداخل أو التباين بين أجزاء السهام للحصول على جزء السهم الكلي
+      correctionFactor = getLCM(correctionFactor, headsPart);
+    }
+  });
+
+  // أصل المسألة بعد التصحيح
+  const correctedOrigin = baseOrigin * correctionFactor;
+  return { correctedOrigin, correctionFactor };
+ }
+    // --- 3. حساب صافي التركة النهائي القابل للتوزيع على الورثة ---
+    const netEstate = estate.liquidationDetails.grossEstate - totalDebtsAndExpenses - finalWillAmount;
     // 1. فحص وجود الفروع والأصول للتحقق من الحجب والأنصبة
     const sons = inheritors.filter(i => i.relation === 'son')
     const daughters = inheritors.filter(i => i.relation === 'daughter')
@@ -27,8 +84,35 @@ const calculateInheritance = (estate, inheritors) => {
         if (['grandfather', 'brother', 'sister'].includes(inheritor.relation) && father) {
             inheritor.isBlocked = true
         }
+        // ---  قواعد حجب الحرمان (Exclusion) ---
+    // الأخ لأم أو الأخت لأم يُحجَبون بوجود الأب أو الفرع الوارث (الأبناء)
+    if (['maternal_brother', 'maternal_sister'].includes(inheritor.relation) && (father || hasChildren)) {
+        inheritor.isBlocked = true;
+    }
+
+    // --- قواعد حجب النقصان (Nuqsan Reduction) ---
+    // الزوج: ينزل من النصف (1/2) إلى الربع (1/4) عند وجود فرع وارث
+    if (inheritor.relation === 'husband' && hasChildren) {
+        inheritor.share = 1 / 4;
+    }
+
+    // الزوجة: تنزل من الربع (1/4) إلى الثمن (1/8) عند وجود فرع وارث
+    if (inheritor.relation === 'wife' && hasChildren) {
+        inheritor.share = 1 / 8;
+    }
+
+    // الأم: تنزل من الثلث (1/3) إلى السدس (1/6) عند وجود فرع وارث أو جمع من الإخوة
+    if (inheritor.relation === 'mother' && (hasChildren || siblingCount >= 2)) {
+        inheritor.share = 1 / 6;
+    }
+    // --- موانع الإرث (اختلاف الدين أو القتل) ---
+   // if (inheritor.isKafir || inheritor.isKiller) {
+      //  inheritor.isBlocked = true;
+      //  inheritor.note = "محجوب بسبب موانع الإرث (قتل أو اختلاف دين)";
+    //}
         return inheritor
     })
+
 // --- فحص وحساب المسألتين العمريتين (الغراوين) ---
     const isOmariyyatan = !hasChildren && father && mother && (husband || (wives && wives.length === 1))
     if (isOmariyyatan) {
@@ -40,6 +124,30 @@ const motherObj = updatedInheritors.find(i => (i.relation === 'mother' || i.rela
 const maternalSiblings = updatedInheritors.filter(i => (i.relation === 'maternal_brother' || i.relation === 'maternal_sister') && !i.isBlocked)
 const fullBrothers = updatedInheritors.filter(i => (i.relation === 'brother' || i.relation === 'sister') && !i.isBlocked)
 const hasFullBrother = fullBrothers.some(i => i.relation === 'brother')
+const isShared = husbandObj && motherObj && maternalSiblings.length >= 1 && fullBrothers.length >= 1
+
+if (isShared) {
+    updatedInheritors = updatedInheritors.map(inheritor => {
+        if (inheritor.isBlocked) return inheritor
+
+        if (inheritor.relation === 'husband') {
+            inheritor.shareRatio = "1/2"
+            inheritor.shareAmount = Number((totalEstate * 0.5).toFixed(2))
+        } else if (inheritor.relation === 'mother' || inheritor.relation === 'grandmother') {
+            inheritor.shareRatio = "1/6"
+            inheritor.shareAmount = Number((totalEstate * (1/6)).toFixed(2))
+            } else if (['maternal_brother', 'maternal_sister', 'brother', 'sister'].includes(inheritor.relation)) {
+            const totalSharedGroup = maternalSiblings.length + fullBrothers.length
+            const sharePerPerson = (1 / 3) / totalSharedGroup
+            inheritor.shareRatio = '1/3 / ${totalSharedGroup} (المشتركة)'
+            inheritor.shareAmount = Number((totalEstate * sharePerPerson).toFixed(2))
+        }
+        return inheritor
+    })
+}
+       
+    })
+
 // --- فحص وحساب المسألة الأكدرية ---
     const grandfatherObj = updatedInheritors.find(i => i.relation === 'grandfather' && !i.isBlocked)
     const sisterObj = updatedInheritors.find(i => (i.relation === 'sister' || i.relation === 'paternal_sister') && !i.isBlocked)
@@ -149,14 +257,14 @@ const hasFullBrother = fullBrothers.some(i => i.relation === 'brother')
                 inheritor.shareAmount = totalEstate * fatherRatio
             }
             return inheritor
-        })
+        }
 
         // إرجاع النتيجة نهائياً لأن العمريتين تستغرقان التركة بالكامل بلا عول ولا رد
         return {
             netEstate: totalEstate,
             inheritors: updatedInheritors
         }
-    }
+    
     let totalAllocatedRatio = 0 // مجموع الفروض الموزعة
 
     // --- المرحلة الثانية: حساب أصحاب الفروض (Fixed Shares) ---
